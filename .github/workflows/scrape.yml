@@ -1,0 +1,70 @@
+name: Scrape cosmetics.lk products
+
+on:
+  # Run manually from the "Actions" tab
+  workflow_dispatch:
+    inputs:
+      max_products:
+        description: "How many products to scrape"
+        required: false
+        default: "10"
+      collection:
+        description: "Collection to scrape (women, men, k-beauty, ...)"
+        required: false
+        default: "women"
+      commit_to_repo:
+        description: "Also commit the Excel file back into the repo?"
+        type: boolean
+        required: false
+        default: false
+
+  # Optional: run automatically every day at 06:00 Sri Lanka time (00:30 UTC).
+  # Remove the two lines below if you only want manual runs.
+  schedule:
+    - cron: "30 0 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          MAX_PRODUCTS: ${{ github.event.inputs.max_products || '10' }}
+          COLLECTION: ${{ github.event.inputs.collection || 'women' }}
+          OUTPUT_FILE: output/cosmetics_products.xlsx
+        run: python scraper.py
+
+      - name: Upload Excel as downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetics-products-${{ github.run_number }}
+          path: |
+            output/cosmetics_products.xlsx
+            output/images/
+          retention-days: 30
+
+      - name: Commit Excel back to repo (optional)
+        if: github.event.inputs.commit_to_repo == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/cosmetics_products.xlsx
+          git commit -m "Update product data ($(date -u +'%Y-%m-%d %H:%M') UTC)" || echo "No changes to commit"
+          git push
